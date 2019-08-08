@@ -10,6 +10,7 @@ use Voronkovich\SberbankAcquiring\Exception\NetworkException;
 use Voronkovich\SberbankAcquiring\Exception\ResponseParsingException;
 use Voronkovich\SberbankAcquiring\HttpClient\CurlClient;
 use Voronkovich\SberbankAcquiring\HttpClient\HttpClientInterface;
+use Voronkovich\SberbankAcquiring\OrderStatus;
 
 /**
  * Client for working with Sberbanks's aquiring REST API.
@@ -21,12 +22,8 @@ class Client
 {
     const ACTION_SUCCESS = 0;
 
-    const API_URI            = 'https://securepayments.sberbank.ru';
-    const API_URI_TEST       = 'https://3dsec.sberbank.ru';
-    const API_PREFIX_DEFAULT = '/payment/rest/';
-    const API_PREFIX_APPLE   = '/payment/applepay/';
-    const API_PREFIX_GOOGLE  = '/payment/google/';
-    const API_PREFIX_SAMSUNG = '/payment/samsung/';
+    const API_URI      = 'https://securepayments.sberbank.ru';
+    const API_URI_TEST = 'https://3dsec.sberbank.ru';
 
     /**
      * @var string
@@ -67,34 +64,6 @@ class Client
     private $apiUri;
 
     /**
-     * Default API endpoints prefix.
-     *
-     * @var string
-     */
-    private $prefixDefault;
-
-    /**
-     * Apple Pay endpoint prefix.
-     *
-     * @var string
-     */
-    private $prefixApple;
-
-    /**
-     * Google Pay endpoint prefix.
-     *
-     * @var string
-     */
-    private $prefixGoogle;
-
-    /**
-     * Samsung Pay endpoint prefix.
-     *
-     * @var string
-     */
-    private $prefixSamsung;
-
-    /**
      * An HTTP method.
      *
      * @var string
@@ -123,10 +92,6 @@ class Client
             'password',
             'token',
             'userName',
-            'prefixDefault',
-            'prefixApple',
-            'prefixGoogle',
-            'prefixSamsung',
         ];
 
         $unknownOptions = \array_diff(\array_keys($options), $allowedOptions);
@@ -157,10 +122,6 @@ class Client
         $this->language = $options['language'] ?? null;
         $this->currency = $options['currency'] ?? null;
         $this->apiUri = $options['apiUri'] ?? self::API_URI;
-        $this->prefixDefault = $options['prefixDefault'] ?? self::API_PREFIX_DEFAULT;
-        $this->prefixApple = $options['prefixApple'] ?? self::API_PREFIX_APPLE;
-        $this->prefixGoogle = $options['prefixGoogle'] ?? self::API_PREFIX_GOOGLE;
-        $this->prefixSamsung = $options['prefixSamsung'] ?? self::API_PREFIX_SAMSUNG;
 
         if (isset($options['httpMethod'])) {
             if (!\in_array($options['httpMethod'], [ HttpClientInterface::METHOD_GET, HttpClientInterface::METHOD_POST ])) {
@@ -200,8 +161,14 @@ class Client
      */
     public function registerOrder($orderId, int $amount, string $returnUrl, array $data = []): array
     {
-        return $this->doRegisterOrder($orderId, $amount, $returnUrl, $data, $this->prefixDefault . 'register.do');
+        return $this->doRegisterOrder($orderId, $amount, $returnUrl, $data, '/payment/rest/register.do');
     }
+
+    public function registerOrderWithDescription($orderId, int $amount, string $returnUrl, string $description, array $data = []): array
+    {
+        return $this->doRegisterOrderWithDescription($orderId, $amount, $returnUrl, $description,  $data, '/payment/rest/register.do');
+    }
+
 
     /**
      * Register a new order using a 2-step payment process.
@@ -217,7 +184,7 @@ class Client
      */
     public function registerOrderPreAuth($orderId, int $amount, string $returnUrl, array $data = []): array
     {
-        return $this->doRegisterOrder($orderId, $amount, $returnUrl, $data, $this->prefixDefault . 'registerPreAuth.do');
+        return $this->doRegisterOrder($orderId, $amount, $returnUrl, $data, '/payment/rest/registerPreAuth.do');
     }
 
     private function doRegisterOrder($orderId, int $amount, string $returnUrl, array $data = [], $method = 'register.do'): array
@@ -244,7 +211,31 @@ class Client
 
         return $this->execute($method, $data);
     }
+    private function doRegisterOrderWithDescription($orderId, int $amount, string $returnUrl, string $description, array $data = [], $method = 'register.do'): array
+{
+    $data['orderNumber'] = $orderId;
+    $data['amount']      = $amount;
+    $data['returnUrl']   = $returnUrl;
+    $data['description'] = $description;
 
+    if (!isset($data['currency']) && null !== $this->currency) {
+        $data['currency'] = $this->currency;
+    }
+
+    if (isset($data['jsonParams'])) {
+        if (!is_array($data['jsonParams'])) {
+            throw new \InvalidArgumentException('The "jsonParams" parameter must be an array.');
+        }
+
+        $data['jsonParams'] = json_encode($data['jsonParams']);
+    }
+
+    if (isset($data['orderBundle']) && is_array($data['orderBundle'])) {
+        $data['orderBundle'] = \json_encode($data['orderBundle']);
+    }
+
+    return $this->execute($method, $data);
+}
     /**
      * Deposit an existing order.
      *
@@ -261,7 +252,7 @@ class Client
         $data['orderId'] = $orderId;
         $data['amount']  = $amount;
 
-        return $this->execute($this->prefixDefault . 'deposit.do', $data);
+        return $this->execute('/payment/rest/deposit.do', $data);
     }
 
     /**
@@ -278,7 +269,7 @@ class Client
     {
         $data['orderId'] = $orderId;
 
-        return $this->execute($this->prefixDefault . 'reverse.do', $data);
+        return $this->execute('/payment/rest/reverse.do', $data);
     }
 
     /**
@@ -297,7 +288,7 @@ class Client
         $data['orderId'] = $orderId;
         $data['amount']  = $amount;
 
-        return $this->execute($this->prefixDefault . 'refund.do', $data);
+        return $this->execute('/payment/rest/refund.do', $data);
     }
 
     /**
@@ -314,7 +305,7 @@ class Client
     {
         $data['orderId'] = $orderId;
 
-        return $this->execute($this->prefixDefault . 'getOrderStatusExtended.do', $data);
+        return $this->execute('/payment/rest/getOrderStatusExtended.do', $data);
     }
 
     /**
@@ -331,7 +322,7 @@ class Client
     {
         $data['pan'] = $pan;
 
-        return $this->execute($this->prefixDefault . 'verifyEnrollment.do', $data);
+        return $this->execute('/payment/rest/verifyEnrollment.do', $data);
     }
 
     /**
@@ -348,7 +339,7 @@ class Client
     {
         $data['mdorder'] = $orderId;
 
-        return $this->execute($this->prefixDefault . 'updateSSLCardList.do', $data);
+        return $this->execute('/payment/rest/updateSSLCardList.do', $data);
     }
 
     /**
@@ -410,7 +401,7 @@ class Client
         $data['transactionStates'] = implode(array_unique($data['transactionStates']), ',');
         $data['merchants']         = implode(array_unique($data['merchants']), ',');
 
-        return $this->execute($this->prefixDefault . 'getLastOrdersForMerchants.do', $data);
+        return $this->execute('/payment/rest/getLastOrdersForMerchants.do', $data);
     }
 
     /**
@@ -429,7 +420,7 @@ class Client
         $data['mdOrder']   = $orderId;
         $data['bindingId'] = $bindingId;
 
-        return $this->execute($this->prefixDefault . 'paymentOrderBinding.do', $data);
+        return $this->execute('/payment/rest/paymentOrderBinding.do', $data);
     }
 
     /**
@@ -446,7 +437,7 @@ class Client
     {
         $data['bindingId'] = $bindingId;
 
-        return $this->execute($this->prefixDefault . 'bindCard.do', $data);
+        return $this->execute('/payment/rest/bindCard.do', $data);
     }
 
     /**
@@ -463,7 +454,7 @@ class Client
     {
         $data['bindingId'] = $bindingId;
 
-        return $this->execute($this->prefixDefault . 'unBindCard.do', $data);
+        return $this->execute('/payment/rest/unBindCard.do', $data);
     }
 
     /**
@@ -482,7 +473,7 @@ class Client
         $data['bindingId'] = $bindingId;
         $data['newExpiry'] = $newExpiry->format('Ym');
 
-        return $this->execute($this->prefixDefault . 'extendBinding.do', $data);
+        return $this->execute('/payment/rest/extendBinding.do', $data);
     }
 
     /**
@@ -499,7 +490,7 @@ class Client
     {
         $data['clientId'] = $clientId;
 
-        return $this->execute($this->prefixDefault . 'getBindings.do', $data);
+        return $this->execute('/payment/rest/getBindings.do', $data);
     }
 
     /**
@@ -513,7 +504,7 @@ class Client
      */
     public function getReceiptStatus(array $data): array
     {
-        return $this->execute($this->prefixDefault . 'getReceiptStatus.do', $data);
+        return $this->execute('/payment/rest/getReceiptStatus.do', $data);
     }
 
     /**
@@ -534,7 +525,7 @@ class Client
         $data['merchant'] = $merchant;
         $data['paymentToken'] = $paymentToken;
 
-        return $this->execute($this->prefixApple . 'payment.do', $data);
+        return $this->execute('/payment/applepay/payment.do', $data);
     }
 
     /**
@@ -555,7 +546,7 @@ class Client
         $data['merchant'] = $merchant;
         $data['paymentToken'] = $paymentToken;
 
-        return $this->execute($this->prefixGoogle . 'payment.do', $data);
+        return $this->execute('/payment/google/payment.do', $data);
     }
 
     /**
@@ -576,7 +567,7 @@ class Client
         $data['merchant'] = $merchant;
         $data['paymentToken'] = $paymentToken;
 
-        return $this->execute($this->prefixSamsung . 'payment.do', $data);
+        return $this->execute('/payment/samsung/payment.do', $data);
     }
 
     /**
@@ -593,10 +584,10 @@ class Client
     {
         // Add '/payment/rest/' prefix for BC compatibility if needed
         if ($action[0] !== '/') {
-            $action = $this->prefixDefault . $action;
+            $action = '/payment/rest/' . $action;
         }
 
-        $rest = 0 === \strpos($action, $this->prefixDefault);
+        $rest = 0 === \strpos($action, '/payment/rest/');
 
         $uri = $this->apiUri . $action;
 
